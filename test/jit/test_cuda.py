@@ -9,7 +9,7 @@ import torch
 from typing import NamedTuple
 from torch.testing import FileCheck
 from torch.testing._internal.jit_utils import JitTestCase
-from torch.testing._internal.common_utils import skipIfRocm, skipCUDANonDefaultStreamIf
+from torch.testing._internal.common_utils import skipIfRocm, skipCUDANonDefaultStreamIf, NoTest
 
 # Make the helper files in test/ importable
 pytorch_test_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -23,7 +23,7 @@ TEST_MULTIGPU = TEST_CUDA and torch.cuda.device_count() >= 2
 # If GPU is not available, then do not run the tests
 if not TEST_CUDA:
     print('CUDA not available, skipping tests', file=sys.stderr)
-    JitTestCase = object  # noqa: F811
+    JitTestCase = NoTest  # noqa: F811
 
 TEST_LARGE_TENSOR = TEST_CUDA
 
@@ -44,13 +44,10 @@ class TestCUDA(JitTestCase):
     """
     A suite of tests for the CUDA API in TorchScript.
     """
-    def setUp(self):
-        super(TestCUDA, self).setUp()
-
     def tearDown(self):
         gc.collect()
         torch.cuda.empty_cache()
-        super(TestCUDA, self).tearDown()
+        super().tearDown()
 
     @skipIfRocm
     @unittest.skipIf(not TEST_MULTIGPU, "detected only one GPU")

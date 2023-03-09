@@ -30,6 +30,7 @@ from unittest import skipIf
 import numpy as np
 
 import torch
+import torch.nn as nn
 import torch.utils.data.datapipes as dp
 import torch.utils.data.graph
 import torch.utils.data.graph_settings
@@ -54,7 +55,7 @@ from torch.utils.data.datapipes.utils.snapshot import (
 )
 from torch.utils.data.datapipes.dataframe import CaptureDataFrame
 from torch.utils.data.datapipes.dataframe import dataframe_wrapper as df_wrapper
-from torch.utils.data.datapipes.iter.grouping import SHARDING_PRIORITIES
+from torch.utils.data.datapipes.iter.sharding import SHARDING_PRIORITIES
 
 try:
     import dill
@@ -628,8 +629,7 @@ class IDP_NoLen(IterDataPipe):
     # Prevent in-place modification
     def __iter__(self):
         input_dp = self.input_dp if isinstance(self.input_dp, IterDataPipe) else copy.deepcopy(self.input_dp)
-        for i in input_dp:
-            yield i
+        yield from input_dp
 
 
 def _fake_fn(data):
@@ -662,6 +662,16 @@ def _mod_3_test(x):
 lambda_fn1 = lambda x: x  # noqa: E731
 lambda_fn2 = lambda x: x % 2  # noqa: E731
 lambda_fn3 = lambda x: x >= 5  # noqa: E731
+
+
+class Add1Module(nn.Module):
+    def forward(self, x):
+        return x + 1
+
+
+class Add1Callable:
+    def __call__(self, x):
+        return x + 1
 
 
 class TestFunctionalIterDataPipe(TestCase):
@@ -1255,6 +1265,7 @@ class TestFunctionalIterDataPipe(TestCase):
 
         p_fn_n1 = partial(fn_n1, d1=1)
         p_fn_cmplx = partial(fn_cmplx, d2=2)
+        p_fn_cmplx_large_arg = partial(fn_cmplx, d2={i: list(range(i)) for i in range(10_000)})
 
         def _helper(ref_fn, fn, input_col=None, output_col=None, error=None):
             for constr in (list, tuple):
@@ -1273,6 +1284,7 @@ class TestFunctionalIterDataPipe(TestCase):
         _helper(lambda data: (data[0], data[1], data[0] + data[1]), fn_n1_def, [0, 1], 2)
         _helper(lambda data: data, p_fn_n1, 0, 1)
         _helper(lambda data: data, p_fn_cmplx, 0, 1)
+        _helper(lambda data: data, p_fn_cmplx_large_arg, 0, 1)
         _helper(lambda data: (data[0], data[1], data[0] + data[1]), p_fn_cmplx, [0, 1], 2)
         _helper(lambda data: (data[0] + data[1], ), fn_n1_pos, [0, 1, 2])
 
@@ -1325,6 +1337,10 @@ class TestFunctionalIterDataPipe(TestCase):
         _helper(lambda data: (str(data[0]), data[1], data[2]), str, 0)
         _helper(lambda data: (data[0], data[1], int(data[2])), int, 2)
 
+        # Handle nn.Module and Callable (without __name__ implemented)
+        _helper(lambda data: (data[0] + 1, data[1], data[2]), Add1Module(), 0)
+        _helper(lambda data: (data[0] + 1, data[1], data[2]), Add1Callable(), 0)
+
     @suppress_warnings  # Suppress warning for lambda fn
     def test_map_dict_with_col_iterdatapipe(self):
         def fn_11(d):
@@ -1360,6 +1376,7 @@ class TestFunctionalIterDataPipe(TestCase):
             return d0 + d1
 
         p_fn_cmplx = partial(fn_cmplx, d2=2)
+        p_fn_cmplx_large_arg = partial(fn_cmplx, d2={i: list(range(i)) for i in range(10_000)})
 
         # Prevent modification in-place to support resetting
         def _dict_update(data, newdata, remove_idx=None):
@@ -1390,6 +1407,7 @@ class TestFunctionalIterDataPipe(TestCase):
         _helper(lambda data: data, fn_n1_def, 'x', 'y')
         _helper(lambda data: data, p_fn_n1, 'x', 'y')
         _helper(lambda data: data, p_fn_cmplx, 'x', 'y')
+        _helper(lambda data: data, p_fn_cmplx_large_arg, 'x', 'y')
         _helper(lambda data: _dict_update(data, {"z": data["x"] + data["y"]}),
                 p_fn_cmplx, ["x", "y", "z"], "z")
 
@@ -1756,7 +1774,7 @@ class TestFunctionalIterDataPipe(TestCase):
             len(zipped_dp)
 
         # Functional Test: zips the results properly
-        exp = list((i, i) for i in range(5))
+        exp = [(i, i) for i in range(5)]
         self.assertEqual(list(zipped_dp), exp)
 
         # Functional Test: zips the inputs properly even when lengths are different (zips to the shortest)
@@ -2202,8 +2220,7 @@ class TestTyping(TestCase):
 
         class DP2(IterDataPipe[T_co]):
             def __iter__(self) -> Iterator[T_co]:
-                for d in range(10):
-                    yield d  # type: ignore[misc]
+                yield from range(10)  # type: ignore[misc]
 
         self.assertTrue(issubclass(DP2, IterDataPipe))
         dp2 = DP2()  # type: ignore[var-annotated]
@@ -2307,8 +2324,7 @@ class TestTyping(TestCase):
 
             @runtime_validation
             def __iter__(self) -> Iterator[Tuple[int, T_co]]:
-                for d in self.ds:
-                    yield d
+                yield from self.ds
 
         dss = ([(1, '1'), (2, '2')],
                [(1, 1), (2, '2')])
@@ -2344,8 +2360,7 @@ class TestTyping(TestCase):
 
             @runtime_validation
             def __iter__(self) -> Iterator[T]:
-                for d in self.ds:
-                    yield d
+                yield from self.ds
 
         ds = list(range(10))
         # Valid type reinforcement
@@ -2368,7 +2383,7 @@ class TestTyping(TestCase):
 
         # Context Manager to disable the runtime validation
         with runtime_validation_disabled():
-            self.assertEqual(list(d for d in dp3), ds)
+            self.assertEqual(list(dp3), ds)
 
 
 class NumbersDataset(IterDataPipe):
@@ -2376,8 +2391,7 @@ class NumbersDataset(IterDataPipe):
         self.size = size
 
     def __iter__(self):
-        for i in range(self.size):
-            yield i
+        yield from range(self.size)
 
     def __len__(self):
         return self.size
@@ -2726,6 +2740,47 @@ class TestSharding(TestCase):
         dp.apply_sharding(5, 3, sharding_group=SHARDING_PRIORITIES.MULTIPROCESSING)
         with self.assertRaises(Exception):
             dp.apply_sharding(2, 1, sharding_group=SHARDING_PRIORITIES.DEFAULT)
+
+    # Test tud.datapipes.iter.grouping.SHARDING_PRIORITIES for backward compatbility
+    # TODO: Remove this test once tud.datapipes.iter.grouping.SHARDING_PRIORITIES is deprecated
+    def test_sharding_groups_in_legacy_grouping_package(self):
+        with self.assertWarnsRegex(FutureWarning, r'Please use `SHARDING_PRIORITIES` '
+                                                  'from the `torch.utils.data.datapipes.iter.sharding`'):
+            from torch.utils.data.datapipes.iter.grouping import SHARDING_PRIORITIES as LEGACY_SHARDING_PRIORITIES
+
+        def construct_sharded_pipe():
+            sharding_pipes = []
+            dp = NumbersDataset(size=90)
+            dp = dp.sharding_filter(sharding_group_filter=LEGACY_SHARDING_PRIORITIES.DISTRIBUTED)
+            sharding_pipes.append(dp)
+            dp = dp.sharding_filter(sharding_group_filter=LEGACY_SHARDING_PRIORITIES.MULTIPROCESSING)
+            sharding_pipes.append(dp)
+            dp = dp.sharding_filter(sharding_group_filter=300)
+            sharding_pipes.append(dp)
+            return dp, sharding_pipes
+
+        dp, sharding_pipes = construct_sharded_pipe()
+
+        for pipe in sharding_pipes:
+            pipe.apply_sharding(2, 1, sharding_group=LEGACY_SHARDING_PRIORITIES.DISTRIBUTED)
+            pipe.apply_sharding(5, 3, sharding_group=LEGACY_SHARDING_PRIORITIES.MULTIPROCESSING)
+            pipe.apply_sharding(3, 1, sharding_group=300)
+
+        actual = list(dp)
+        expected = [17, 47, 77]
+        self.assertEqual(expected, actual)
+        self.assertEqual(3, len(dp))
+
+        dp, _ = construct_sharded_pipe()
+        dp.apply_sharding(2, 1, sharding_group=LEGACY_SHARDING_PRIORITIES.DEFAULT)
+        with self.assertRaises(Exception):
+            dp.apply_sharding(5, 3, sharding_group=LEGACY_SHARDING_PRIORITIES.MULTIPROCESSING)
+
+        dp, _ = construct_sharded_pipe()
+        dp.apply_sharding(5, 3, sharding_group=LEGACY_SHARDING_PRIORITIES.MULTIPROCESSING)
+        with self.assertRaises(Exception):
+            dp.apply_sharding(2, 1, sharding_group=LEGACY_SHARDING_PRIORITIES.DEFAULT)
+
 
     def test_sharding_length(self):
         numbers_dp = dp.iter.IterableWrapper(range(13))

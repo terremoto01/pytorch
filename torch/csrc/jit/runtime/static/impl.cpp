@@ -679,7 +679,12 @@ void StaticModule::prepareFunctionsAndConstants(
 
     if (node->kind() == prim::Constant) {
       auto* v = node->output();
-      TORCH_CHECK(v->type()->kind() != FunctionType::Kind);
+      TORCH_CHECK(
+          v->type()->kind() != FunctionType::Kind,
+          "got ",
+          typeKindToString(v->type()->kind()),
+          " instead of ",
+          typeKindToString(FunctionType::Kind));
       value_to_index.emplace(v, constants_.size());
       constants_.emplace_back(toIValue(v).value());
       continue;
@@ -927,7 +932,13 @@ void check_type(const Argument& schema_arg, const IValue& arg) {
       schema_arg.type()->kind() == c10::TypeKind::TensorType) {
     return;
   }
-  TORCH_CHECK(arg.type()->isSubtypeOf(schema_arg.type()));
+  TORCH_CHECK(
+      arg.type()->isSubtypeOf(schema_arg.type()),
+      c10::to_string(arg.type()),
+      " is not a subtype of ",
+      c10::to_string(schema_arg.type()),
+      "; schema arg name: ",
+      schema_arg.name());
 }
 } // namespace
 
@@ -942,10 +953,24 @@ void BlockRunner::set_inputs(
 
   if (!is_root_block_ || C10_UNLIKELY(!schema)) {
     TORCH_CHECK(
-        kwargs.empty(), "Schema is not available, but BlockRunner got kwargs.");
+        kwargs.empty(),
+        "BlockRunner got kwargs; is_root_block: ",
+        std::to_string(is_root_block_),
+        "schema: ",
+        schema ? schema->name() : "(not available)");
 
     const auto total_num_inputs = args.size() + first_input_is_self_;
-    TORCH_CHECK(total_num_inputs == block_info_.num_inputs());
+    TORCH_CHECK(
+        total_num_inputs == block_info_.num_inputs(),
+        "Block runner got ",
+        std::to_string(total_num_inputs),
+        " inputs; ",
+        " first_input_is_self: ",
+        std::to_string(first_input_is_self_),
+        "; SR block expects ",
+        std::to_string(block_info_.num_inputs()),
+        " inputs for schema ",
+        schema ? schema->name() : "(not available)");
 
     for (size_t i = 0; i < args.size(); ++i) {
       set_arg(i, std::forward<IValueList>(args));
@@ -955,10 +980,15 @@ void BlockRunner::set_inputs(
 
   const auto& schema_args = schema->arguments();
   size_t consumed_kwargs = 0;
-  DCHECK(schema_args.size() > 0);
+  DCHECK(!schema_args.empty());
   TORCH_CHECK(
       args.size() < schema_args.size(),
-      "Static runtime got too many arguments");
+      "Static runtime got ",
+      std::to_string(args.size()),
+      " arguments, expects ",
+      std::to_string(schema_args.size() - 1),
+      " for schema ",
+      schema->name());
   for (size_t i = 0; i < schema_args.size() - 1; ++i) {
     // Start at 1 since the schema always contains `self`.
     const auto& schema_arg = schema_args[i + 1];
@@ -984,9 +1014,20 @@ void BlockRunner::set_inputs(
     }
 
     TORCH_CHECK(
-        false, "Static runtime is missing required kwarg ", schema_arg.name());
+        false,
+        "Static runtime is missing required kwarg ",
+        schema_arg.name(),
+        " for schema ",
+        schema->name());
   }
-  TORCH_CHECK(consumed_kwargs == kwargs.size());
+  TORCH_CHECK(
+      consumed_kwargs == kwargs.size(),
+      "kwargs size mismatch (consumed ",
+      std::to_string(consumed_kwargs),
+      ", expected ",
+      std::to_string(kwargs.size()),
+      " for schema ",
+      schema->name());
 }
 
 void BlockRunner::create_memory_planner() {
@@ -1271,7 +1312,7 @@ c10::intrusive_ptr<c10::ivalue::Future> BlockRunner::run_impl_async(
     const KeywordArgs& kwargs) {
   // run the graph inline in the caller thread. Async ops will be
   // executed on taskLauncher attached to the metadata of ProcessedNodes
-  c10::IValue output = run_impl(args, kwargs);
+  c10::IValue output = run_impl(std::forward<IValueList>(args), kwargs);
 
   // If the output is of type future, return it
   if (output.isFuture()) {
@@ -1375,8 +1416,7 @@ void BlockRunner::benchmark(
     const int main_runs,
     bool print_per_node_time,
     bool generate_ai_pep_output) {
-  TORCH_CHECK(
-      kwargs_list.size() == 0 || args_list.size() == kwargs_list.size());
+  TORCH_CHECK(kwargs_list.empty() || args_list.size() == kwargs_list.size());
   std::cout << "Input size: " << args_list.size() << std::endl;
   float time_per_iter =
       benchmark_model(args_list, kwargs_list, warmup_runs, main_runs);
@@ -1397,7 +1437,7 @@ void BlockRunner::benchmark(
 
   std::vector<std::pair<std::string, double>> time_per_node_type_vec{
       results.time_per_node_type.begin(), results.time_per_node_type.end()};
-  if (args_list.size() == 0) {
+  if (args_list.empty()) {
     std::sort(
         time_per_node_type_vec.begin(),
         time_per_node_type_vec.end(),
@@ -1497,10 +1537,9 @@ float BlockRunner::benchmark_model(
     const int warmup_runs,
     const int main_runs) {
   TORCH_CHECK(warmup_runs >= 0 && main_runs >= 1);
-  TORCH_CHECK(
-      kwargs_list.size() == 0 || args_list.size() == kwargs_list.size());
+  TORCH_CHECK(kwargs_list.empty() || args_list.size() == kwargs_list.size());
 
-  const bool is_kwargs_empty = kwargs_list.size() == 0;
+  const bool is_kwargs_empty = kwargs_list.empty();
   const KeywordArgs empty_kwargs;
   for (const auto i : c10::irange(warmup_runs)) {
     (void)i; // Suppress unused variable warning
@@ -1599,13 +1638,12 @@ BlockRunner::IndividualMetrics BlockRunner::benchmark_individual_ops(
     const std::vector<KeywordArgs>& kwargs_list,
     const int warmup_runs,
     const int main_runs) {
-  TORCH_CHECK(
-      kwargs_list.size() == 0 || args_list.size() == kwargs_list.size());
+  TORCH_CHECK(kwargs_list.empty() || args_list.size() == kwargs_list.size());
   TORCH_CHECK(warmup_runs >= 1 && main_runs >= 1);
 
   IndividualMetrics results;
   results.time_per_node.resize(nodes_.size(), 0);
-  if (args_list.size() == 0) {
+  if (args_list.empty()) {
     // When the given input is empty, compute the op statistics from the given
     // graph without executing it.
     for (const auto i : c10::irange(nodes_.size())) {
@@ -1634,7 +1672,7 @@ BlockRunner::IndividualMetrics BlockRunner::benchmark_individual_ops(
     return results;
   }
 
-  const bool is_kwargs_empty = kwargs_list.size() == 0;
+  const bool is_kwargs_empty = kwargs_list.empty();
   const KeywordArgs empty_kwargs;
   bool manage_output_tensors = static_module_.opts().manage_output_tensors;
   // See comment on above use of InferenceMode for
@@ -1955,7 +1993,14 @@ StaticNodeInfo::StaticNodeInfo(
       fn_(fn),
       inputs_(std::move(inputs)),
       outputs_offset_(outputs_offset) {
-  TORCH_CHECK(num_outputs() == node->outputs().size());
+  TORCH_CHECK(
+      num_outputs() == node->outputs().size(),
+      "Node ",
+      node->kind().toQualString(),
+      " has ",
+      std::to_string(num_outputs()),
+      " outputs, expected ",
+      std::to_string(node->outputs().size()));
 }
 
 std::vector<IValue> ProcessedNode::inputs_ivalue_vec() const {
