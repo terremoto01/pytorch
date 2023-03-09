@@ -1,4 +1,5 @@
 from . import allowed_functions, convert_frame, eval_frame, resume_execution
+from .config_utils import DynamoConfig
 from .backends.registry import list_backends, register_backend
 from .convert_frame import replay
 from .eval_frame import (
@@ -20,6 +21,7 @@ from .utils import compilation_metrics, guard_failures, orig_code_map, reset_fra
 __all__ = [
     "allow_in_graph",
     "assume_constant_result",
+    "config",
     "disallow_in_graph",
     "forbid_in_graph",
     "graph_break",
@@ -38,6 +40,8 @@ __all__ = [
     "register_backend",
     "list_backends",
 ]
+
+config = DynamoConfig()
 
 
 def reset():
