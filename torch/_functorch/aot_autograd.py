@@ -1916,7 +1916,14 @@ def create_runtime_wrapper(
         else:
             args_with_synthetic_bases = args
 
-        with torch.autograd._force_original_view_tracking(True):
+        if trace_joint:
+            with torch.autograd._force_original_view_tracking(True):
+                all_outs = call_func_with_args(
+                    compiled_fn,
+                    args_with_synthetic_bases,
+                    disable_amp=True,
+                )
+        else:
             all_outs = call_func_with_args(
                 compiled_fn,
                 args_with_synthetic_bases,
