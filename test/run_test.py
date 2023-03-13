@@ -813,7 +813,6 @@ def get_pytest_args(options):
         "--use-pytest",
         "-vv",
         "-rfEX",
-        "-p", "no:xdist",
     ]
     pytest_args.extend(rerun_options)
     return pytest_args
@@ -894,11 +893,6 @@ CUSTOM_HANDLERS = {
     # run_test_ops is good at parallelizing things
     "test_decomp": run_test_ops,
 }
-
-
-PYTEST_BLOCKLIST = [
-    "dynamo/test_dynamic_shapes",  # needs change to check_if_enable for disabled test issues
-]
 
 
 def parse_test_module(test):
@@ -1150,7 +1144,7 @@ def must_serial(file: str) -> bool:
 
 
 def can_run_in_pytest(test):
-    return (test not in PYTEST_BLOCKLIST) and (os.getenv('PYTORCH_TEST_DO_NOT_USE_PYTEST', '0') == '0')
+    return os.getenv('PYTORCH_TEST_DO_NOT_USE_PYTEST', '0') == '0'
 
 
 def get_selected_tests(options):
