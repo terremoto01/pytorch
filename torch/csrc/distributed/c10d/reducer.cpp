@@ -347,6 +347,35 @@ void Reducer::check_grad_layout(
   }
 }
 
+void Reducer::point_grads_to_bucket() {
+  for (const auto& bucket : buckets_) {
+    bool bucket_zeroed = false;
+    for (int variable_index = 0; variable_index < bucket.variables.size();
+         ++variable_index) {
+      const auto& bucket_index = variable_locators_[variable_index];
+      auto& bucket = buckets_[bucket_index.bucket_index];
+      auto& variable = bucket.variables[bucket_index.intra_bucket_index];
+      auto& bucket_view =
+          bucket.bucket_views_in[bucket_index.intra_bucket_index];
+
+      runGradCallbackForVariable(variable, [&](auto& grad) {
+        if (!grad.defined()) {
+          // grad is None: assuming user called zero_grad(set_to_none=True)
+          if (!bucket_zeroed) {
+            bucket_view.zero_();
+            bucket_zeroed = true;
+          }
+          // point grad to bucket
+          grad = bucket_view;
+          // The grad is modified and need to be written back.
+          return true;
+        }
+        // Grad is not none
+        return false;
+      });
+    };
+  }
+}
 void Reducer::mark_variable_ready_dense(size_t variable_index) {
   const auto& bucket_index = variable_locators_[variable_index];
   auto& bucket = buckets_[bucket_index.bucket_index];
