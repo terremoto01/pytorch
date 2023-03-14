@@ -16,6 +16,7 @@ from ..utils import (
     cache_on_self,
     get_benchmark_name,
     has_triton,
+    LineContext,
     sympy_dot,
     sympy_product,
 )
@@ -553,7 +554,7 @@ class WrapperCodeGen(CodeGen):
 
         self.add_benchmark_harness(result)
 
-        return result.getvalue()
+        return result.getvaluewithlinemap()
 
     def benchmark_compiled_module(self, output):
         def add_fake_input(name, shape, stride, device, dtype):
@@ -653,6 +654,9 @@ class WrapperCodeGen(CodeGen):
 
     def writeline(self, line):
         self.lines.append(line)
+
+    def enter_context(self, ctx):
+        self.lines.append(LineContext(ctx))
 
 
 class CppWrapperCodeGen(WrapperCodeGen):
