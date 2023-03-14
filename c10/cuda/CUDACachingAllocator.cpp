@@ -922,6 +922,7 @@ class DeviceCachingAllocator {
             TraceEntry::SEGMENT_ALLOC,
             int64_t(params.block->ptr),
             params.block->size,
+            0,
             params.stream(),
             context);
       }
@@ -945,7 +946,8 @@ class DeviceCachingAllocator {
         record_trace(
             TraceEntry::OOM,
             device_free,
-            params.size(),
+            orig_size,
+            params.size() - orig_size,
             params.stream(),
             std::move(context));
       }
@@ -1104,6 +1106,7 @@ class DeviceCachingAllocator {
           TraceEntry::ALLOC,
           int64_t(block->ptr),
           orig_size,
+          block->size - orig_size,
           block->stream,
           block->history->h.context);
     }
@@ -1162,6 +1165,7 @@ class DeviceCachingAllocator {
           TraceEntry::FREE_REQUESTED,
           int64_t(block->ptr),
           block->history->h.real_size,
+          block->size - block->history->h.real_size,
           block->stream,
           block->history->h.context);
     }
@@ -1597,7 +1601,7 @@ class DeviceCachingAllocator {
         });
 
     if (record_history) {
-      record_trace(TraceEntry::SNAPSHOT, 0, total_active, 0, nullptr);
+      record_trace(TraceEntry::SNAPSHOT, 0, total_active, 0, 0, nullptr);
     }
     return result;
   }
@@ -1772,6 +1776,7 @@ class DeviceCachingAllocator {
           TraceEntry::FREE_COMPLETED,
           int64_t(block->ptr),
           block->history->h.real_size,
+          block->size - block->history->h.real_size,
           block->stream,
           block->history->h.context);
     }
@@ -2180,6 +2185,7 @@ class DeviceCachingAllocator {
           TraceEntry::SEGMENT_FREE,
           int64_t(block->ptr),
           block->size,
+          0,
           block->stream,
           block->history->h.context);
     }
@@ -2317,12 +2323,14 @@ class DeviceCachingAllocator {
       TraceEntry::Action action,
       int64_t addr,
       size_t size,
+      size_t rounded_by,
       cudaStream_t stream,
       std::shared_ptr<GatheredContext> context) {
     auto te = TraceEntry(
         action,
         addr,
         size,
+        rounded_by,
         stream,
         alloc_trace_record_context_ ? std::move(context) : nullptr);
     if (alloc_trace->size() < alloc_trace_max_entries_) {
