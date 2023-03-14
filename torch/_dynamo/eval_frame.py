@@ -634,6 +634,7 @@ def export(
     graph = None
     out_guards = None
     graph_captured_input = None
+    example_fake_inputs = None
     graph_captured_result: Optional[Tuple[torch.Tensor, ...]] = None
 
     def produce_matching(source_args, candidate_args):
@@ -679,6 +680,9 @@ def export(
         ), "Tried to emit a second graph during export. Tracing through 'f' must produce a single graph."
         graph = gm
 
+        nonlocal example_fake_inputs
+        example_fake_inputs = example_inputs
+
         def result_capturing_wrapper(*graph_inputs):
             nonlocal graph_captured_result
             nonlocal graph_captured_input
@@ -698,7 +702,10 @@ def export(
     ):
         opt_f = optimize_assert(
             dynamo_normalization_capturing_compiler,
-            hooks=Hooks(guard_export_fn=guard_export_print, guard_fail_fn=None),
+            hooks=Hooks(
+                guard_export_fn=guard_export_print,
+                guard_fail_fn=None,
+            ),
             export=True,
             dynamic=(tracing_mode == "symbolic"),
         )(f)
@@ -764,9 +771,9 @@ def export(
         graph = make_fx(
             graph_with_interpreter,
             decomposition_table=decomposition_table,
-            tracing_mode=tracing_mode,
+            tracing_mode="real",
             _allow_non_fake_inputs=True,
-        )(*graph_captured_input)
+        )(*example_fake_inputs)
 
     new_graph = ChangeInputOutputSignature(
         graph,
