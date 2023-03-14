@@ -22,4 +22,4 @@ pip_install \
   transformers==4.25.1
 
 # TODO: change this when onnx-script is on testPypi
-pip_install "onnx-script@git+https://github.com/microsoft/onnx-script@29241e15f5182be1384f1cf6ba203d7e2e125196"
+pip_install "onnx-script@git+https://github.com/microsoft/onnx-script@2952f41d9a76e48be378f100fe1623d744fe1943"
