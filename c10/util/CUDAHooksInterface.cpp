@@ -1,4 +1,4 @@
-#include <ATen/detail/CUDAHooksInterface.h>
+#include <c10/util/CUDAHooksInterface.h>
 
 #include <c10/util/Exception.h>
 #include <c10/util/CallOnce.h>

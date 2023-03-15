@@ -70,3 +70,14 @@ def define_targets(rules):
         ),
         visibility = ["//c10:__pkg__", "//:__pkg__"],
     )
+
+    rules.cc_library(
+        name = "CUDAHooksInterface",
+        srcs = ["CUDAHooksInterface.cpp"],
+        hdrs = ["CUDAHooksInterace.h"],
+        linkstatic = True,
+        local_defines = ["C10_BUILD_MAIN_LIB"],
+        visibility = ["//visibility:public"],
+        deps = [
+            "//c10/macros:macros",
+        ],
