@@ -814,6 +814,14 @@ class VariableBuilder:
                 options = {"guards": guards}
             else:
                 options = {}
+
+            if self.tx.export and not isinstance(self.get_source(), LocalInputSource):
+                raise AssertionError(
+                    "Dynamo attempts to add additional input: value={}, source={}".format(
+                        wrapped_value, self.get_source()
+                    )
+                )
+
             options.update({"source": self.get_source()})
             if isinstance(wrapped_value, torch.Tensor):
                 options.update({"raw_value": value})
